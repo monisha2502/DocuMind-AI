@@ -3,10 +3,10 @@ import shutil
 import os
 import fitz
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-import google.generativeai as genai
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lsa import LsaSummarizer
 app = FastAPI()
-genai.configure(api_key="")
-model = genai.GenerativeModel("gemini-2.5-flash")
 UPLOAD_FOLDER = "uploads"
 pdf_text = ""
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -26,7 +26,7 @@ async def upload_pdf(file: UploadFile = File(...)):
 def read_pdf():
     global pdf_text
     pdf_files = [f for f in os.listdir(UPLOAD_FOLDER) if f.endswith(".pdf")]
-    if not pdf_files:
+    if len(pdf_files) == 0:
         raise HTTPException(
             status_code=404,
             detail="No PDF found"
@@ -61,21 +61,14 @@ def summarize_pdf():
     text = ""
     for page in doc:
         text += page.get_text()
-    response = model.generate_content(
-        f"""
-        summarize the following PDF in bullet points.
-        Mention:
-        - Title
-        - Objective
-        - Methodology
-        - Results
-        - Conclusion
-        Text:
-        {text[:3000]}
-        """
-
+    parser = PlaintextParser.from_string(
+        text,
+        Tokenizer("english")
     )
-    summary = response.text
+    summarizer = LsaSummarizer()
+    summary = ""
+    for sentence in summarizer(parser.document, 5):
+        summary += str(sentence) + "\n"
     return {
         "filename": pdf_files[0],
         "summary": summary
@@ -110,23 +103,24 @@ def chunk_pdf():
         "total_chunks": len(chunks),
         "first_chunk": chunks[0]
     }
-@app.get("/ask")
-def ask_question(question: str):
-    if not pdf_text:
+@app.get("/analytics")
+def pdf_analytics():
+    pdf_files = [ f for f in os.listdir(UPLOAD_FOLDER) if f.endswith(".pdf")]
+    if not pdf_files:
         raise HTTPException(
-            status_code=400,
-            detail="No PDF loaded"
+            status_code=404,
+            detail="No PDF found"
         )
-    response = model.generate_content(
-        f"""
-        Answer the question based only on the PDF content.
-        PDF:
-        {pdf_text[:5000]}
-        Question:
-        {question}
-        """
-    )
+    pdf_path = os.path.join(UPLOAD_FOLDER, pdf_files[0])
+    doc = fitz.open(pdf_path)
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    pages = len(doc)
+    doc.close()
     return {
-        "question": question,
-        "answer": response.text
+        "filename": pdf_files[0],
+        "pages": pages,
+        "words": len(text.split()),
+        "characters": len(text),
     }
