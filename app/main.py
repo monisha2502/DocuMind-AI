@@ -10,6 +10,8 @@ from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.lsa import LsaSummarizer
 from collections import Counter
 from fastapi.responses import FileResponse
+
+
 app = FastAPI()
 UPLOAD_FOLDER = "uploads"
 pdf_text = ""
@@ -355,6 +357,7 @@ def export_summary():
         media_type="text/plain",
         filename="summary.txt"
     )
+
 
                
 
